@@ -44,6 +44,7 @@
     {
         $s3_dir = $s3_filename;
         if($s3_dir == '/') $s3_dir = '';
+		$s3_dir = ltrim($s3_dir, '/');
 
         for($i = 2; $i < count($args->args); $i++)
         {
