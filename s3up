@@ -5,7 +5,8 @@
     // Help info...
     if(count($args->args) < 2)
     {
-        echo "Usage: {$GLOBALS['argv'][0]} [-txz] [options] s3-bucket s3-filename filename\n";
+        echo "Usage: {$GLOBALS['argv'][0]} [-ctxz] [options] s3-bucket s3-filename filename\n";
+        echo "  -c        Use MD5 checksum to avoid duplicate PUTs, useful for resuming uploads.\n";
         echo "  -t        Append timestamp to uploaded filename for versioning.\n";
         echo "  -x        Set far future expiry headers on uploaded file.\n";
         echo "  -z        Upload a gzipped version in addition to the main file.\n";
@@ -44,22 +45,22 @@
     {
         $s3_dir = $s3_filename;
         if($s3_dir == '/') $s3_dir = '';
-		$s3_dir = ltrim($s3_dir, '/');
+        $s3_dir = ltrim($s3_dir, '/');
 
         for($i = 2; $i < count($args->args); $i++)
         {
             $info = pathinfo($args->args[$i]);
             if(is_dir($args->args[$i]))
-			{
+            {
                 upload_directory($s3_bucket, $s3_dir, $info['dirname'], $info['basename'], $args);
             }
-			else
-			{
-            	if(!file_exists($args->args[$i]) || !is_readable($args->args[$i]))
-                	die("Cannot read {$args->args[$i]}\n"); // TODO: Send to stderr instead
-				else
-	            	upload_static_file($s3_bucket, $s3_dir . $info['basename'], $args->args[$i], $args);
-			}
+            else
+            {
+                if(!file_exists($args->args[$i]) || !is_readable($args->args[$i]))
+                    die("Cannot read {$args->args[$i]}\n"); // TODO: Send to stderr instead
+                else
+                    upload_static_file($s3_bucket, $s3_dir . $info['basename'], $args->args[$i], $args);
+            }
         }
     }
     else // Upload a single file...
@@ -70,7 +71,7 @@
         upload_static_file($s3_bucket, $s3_filename, $filename, $args);
     }
 
-	// TODO: Can probably refactor this as it contains duplicate code
+    // TODO: Can probably refactor this as it contains duplicate code
     function upload_directory($bucket, $s3_dir, $local_path, $local_dir, $args)
     {
         echo "Processing dir: $local_path/$local_dir --> $s3_dir$local_dir\n";
@@ -84,16 +85,16 @@
 
             $file = "$local_path/$local_dir/$file";
             if(is_dir($file))
-			{
+            {
                 upload_directory($bucket, $s3_dir, $local_path, $local_dir . '/' . basename($file), $args);
             }
-			else
-			{
-            	if(!file_exists($file) || !is_readable($file))
-                	die("Cannot read $file\n");
-				else
-		            upload_static_file($bucket, $s3_dir.$local_dir."/".basename($file), $file, $args);
-			}
+            else
+            {
+                if(!file_exists($file) || !is_readable($file))
+                    die("Cannot read $file\n");
+                else
+                    upload_static_file($bucket, $s3_dir.$local_dir."/".basename($file), $file, $args);
+            }
         }
         closedir($dhandle);
     }
@@ -123,12 +124,30 @@
             $remote_name = $dir . $info['filename'] . '.' . date('YmdHis') . '.' . $info['extension'];
         }
 
-        // Actually upload the file...
+
+        // Begin the upload proccess
         $s3 = new S3($AMZ_KEY, $AMZ_SECRET);
-        if($s3->uploadFile($bucket, $remote_name, $local_name, true, $headers))
-            echo "http://$bucket.s3.amazonaws.com/$remote_name\n";
-        else
-            die("Unable to upload '$local_name' to '$remote_name'\n");
+
+        // Should we check to see if the file has already been uploaded?
+        $ok_to_upload = true;
+        if($args->flag('c'))
+        {
+            $info = $s3->getObjectInfo($bucket, $remote_name);
+            if(substr($info['ETag'], 1, -2) == md5_file($local_name))
+            {
+                $ok_to_upload = false;
+                echo "Skipping (MD5 match): http://$bucket.s3.amazonaws.com/$remote_name\n";
+            }
+        }
+
+        // Actually upload the file...
+        if($ok_to_upload)
+        {
+            if($s3->uploadFile($bucket, $remote_name, $local_name, true, $headers))
+                echo "http://$bucket.s3.amazonaws.com/$remote_name\n";
+            else
+                die("Unable to upload '$local_name' to '$remote_name'\n");
+        }
 
         // Upload the gzipped version...
         if($args->flag('z'))
@@ -142,10 +161,27 @@
             shell_exec(sprintf('gzip -c %s > %s', escapeshellarg($local_name), $gzname));
 
             $headers['Content-Encoding'] = 'gzip';
-            if($s3->uploadFile($bucket, $remote_name, $gzname, true, $headers))
-                echo "http://$bucket.s3.amazonaws.com/$remote_name\n";
-            else
-                die("Unable to upload '$local_name' to '$remote_name' (gzip version)\n");
+
+            // Should we check to see if the file has already been uploaded?
+            $ok_to_upload = true;
+            if($args->flag('c'))
+            {
+                $info = $s3->getObjectInfo($bucket, $remote_name);
+                if(substr($info['ETag'], 1, -2) == md5_file($local_name))
+                {
+                    $ok_to_upload = false;
+                    echo "Skipping (MD5 match): http://$bucket.s3.amazonaws.com/$remote_name\n";
+                }
+            }
+
+            // Actually upload the file...
+            if($ok_to_upload)
+            {
+                if($s3->uploadFile($bucket, $remote_name, $gzname, true, $headers))
+                    echo "http://$bucket.s3.amazonaws.com/$remote_name\n";
+                else
+                    die("Unable to upload '$local_name' to '$remote_name' (gzip version)\n");
+            }
         }
     }
 
@@ -394,13 +430,13 @@
             $result = false;
             $retries = 0;
             while( ($result === false || $this->curlInfo['http_code'] != '200') && $retries < 3 )
-			{
+            {
                 if($retries++ > 0) sleep($retries);
                 $result = curl_exec($ch);
                 $this->curlInfo = curl_getinfo($ch);
             }
             if($retries == 3)
-			{
+            {
                 fwrite(STDERR, 'Curl error: ' . curl_error($ch) . "\n");
                 print_r($this->curlInfo);
                 fwrite(STDERR,"AWS Response:\n$result");
