@@ -25,7 +25,7 @@
 	$AMZ_KEY = $args->flag('key') ? $args->flag('key') : @$_ENV['AMZ_KEY'];
 	$AMZ_SECRET = $args->flag('secret') ? $args->flag('secret') : @$_ENV['AMZ_SECRET'];
 	if(strlen($AMZ_KEY) == 0 || strlen($AMZ_SECRET) == 0){
-		die("Amazon key and private key must both be defined.\n");
+		trigger_error("Amazon key and private key must both be defined.\n", E_USER_ERROR);
 	}
 
 	// Gather our arguments...
@@ -45,6 +45,7 @@
 		if($s3_dir == '/'){
 			$s3_dir = '';
 		}
+
 		$s3_dir = ltrim($s3_dir, '/');
 
 		for($i = 2; $i < count($args->args); $i++){
@@ -53,7 +54,7 @@
 				upload_directory($s3_bucket, $s3_dir, $info['dirname'], $info['basename'], $args);
 			}else{
 				if(!file_exists($args->args[$i]) || !is_readable($args->args[$i])){
-					die("Cannot read {$args->args[$i]}\n"); // TODO: Send to stderr instead
+					trigger_error("Cannot read {$args->args[$i]}\n", E_USER_ERROR);
 				}else{
 					upload_static_file($s3_bucket, $s3_dir . $info['basename'], $args->args[$i], $args);
 				}
@@ -63,7 +64,7 @@
 	}else{
 		$filename = $args->args[2];
 		if(!file_exists($filename) || !is_readable($filename)){
-			die("Cannot read $filename\n");
+			trigger_error("Cannot read $filename\n", E_USER_ERROR);
 		}
 		upload_static_file($s3_bucket, $s3_filename, $filename, $args);
 	}
@@ -73,7 +74,7 @@
 		echo "Processing dir: $local_path/$local_dir --> $s3_dir$local_dir\n";
 		$dhandle = opendir("$local_path/$local_dir");
 		if(!$dhandle){
-			die("Cannot open directory $local_dir\n");
+			trigger_error("Cannot open directory $local_dir\n", E_USER_ERROR);
 		}
 
 		while(false !== ($file = readdir($dhandle))){
@@ -86,7 +87,7 @@
 				upload_directory($bucket, $s3_dir, $local_path, $local_dir . '/' . basename($file), $args);
 			}else{
 				if(!file_exists($file) || !is_readable($file)){
-					die("Cannot read $file\n");
+					trigger_error("Cannot read $file\n", E_USER_ERROR);
 				}else{
 					upload_static_file($bucket, $s3_dir.$local_dir."/".basename($file), $file, $args);
 				}
@@ -139,7 +140,7 @@
 			if($s3->uploadFile($bucket, $remote_name, $local_name, true, $headers)){
 				echo "http://$bucket.s3.amazonaws.com/$remote_name\n";
 			}else{
-				die("Unable to upload '$local_name' to '$remote_name'\n");
+				trigger_error("Unable to upload '$local_name' to '$remote_name'\n", E_USER_ERROR);
 			}
 		}
 
@@ -172,7 +173,7 @@
 				if($s3->uploadFile($bucket, $remote_name, $gzname, true, $headers)){
 					echo "http://$bucket.s3.amazonaws.com/$remote_name\n";
 				}else{
-					die("Unable to upload '$local_name' to '$remote_name' (gzip version)\n");
+					trigger_error("Unable to upload '$local_name' to '$remote_name' (gzip version)\n", E_USER_ERROR);
 				}
 			}
 		}
@@ -541,8 +542,9 @@
 
 			$argv = $GLOBALS['argv'];
 			array_shift($argv);
+			$numArgs = count($argv);
 
-			for($i = 0; $i < count($argv); $i++){
+			for($i = 0; $i < $numArgs; $i++){
 				$str = $argv[$i];
 
 				// --foo
@@ -553,9 +555,11 @@
 
 					// Does not have an =, so choose the next arg as its value
 					if(count($parts) == 1 && isset($argv[$i + 1]) && preg_match('/^--?.+/', $argv[$i + 1]) == 0){
-						$this->flags[$parts[0]] = $argv[$i + 1];
+			                    	// Make sure to increment $i so that we don't count the value as the next argument
+                        			$this->flags[$parts[0]] = $argv[++$i];
 					// Has a =, so pick the second piece
 					}elseif(count($parts) == 2){
+
 						$this->flags[$parts[0]] = $parts[1];
 					}
 				// -a
@@ -566,15 +570,24 @@
 					}
 				// -abcdef
 				}elseif(strlen($str) > 1 && $str[0] == '-'){
-					for($j = 1; $j < strlen($str); $j++){
+		                	$strLen = strlen($str);
+                		        for($j = 1; $j < $strLen; $j++){
 						$this->flags[$str[$j]] = true;
 					}
 				}
 			}
 
 			for($i = count($argv) - 1; $i >= 0; $i--){
-				if(preg_match('/^--?.+/', $argv[$i]) == 0){
-					$this->args[] = $argv[$i];
+		            	if(isset($argv[$i-1])){
+		            		$previousPart = $argv[$i-1];
+		            	}
+		            	$currentPart = $argv[$i];
+
+           	           	// This does not account for previous arg being "--variable" without an = sign.
+           	           	// if(preg_match('/^--?.+/', $currentPart) == 0)
+		            	// adding a check on the previous arg
+                		if(preg_match('/^--?.+/', $currentPart) == 0 AND (strpos($previousPart, '--') !== 0 OR strpos($previousPart, '='))){
+		                    $this->args[] = $currentPart;
 				}else{
 					break;
 				}
