@@ -555,8 +555,8 @@
 
 					// Does not have an =, so choose the next arg as its value
 					if(count($parts) == 1 && isset($argv[$i + 1]) && preg_match('/^--?.+/', $argv[$i + 1]) == 0){
-			                    	// Make sure to increment $i so that we don't count the value as the next argument
-                        			$this->flags[$parts[0]] = $argv[++$i];
+					// Make sure to increment $i so that we don't count the value as the next argument
+					$this->flags[$parts[0]] = $argv[++$i];
 					// Has a =, so pick the second piece
 					}elseif(count($parts) == 2){
 
@@ -570,24 +570,24 @@
 					}
 				// -abcdef
 				}elseif(strlen($str) > 1 && $str[0] == '-'){
-		                	$strLen = strlen($str);
-                		        for($j = 1; $j < $strLen; $j++){
+					$strLen = strlen($str);
+					for($j = 1; $j < $strLen; $j++){
 						$this->flags[$str[$j]] = true;
 					}
 				}
 			}
 
 			for($i = count($argv) - 1; $i >= 0; $i--){
-		            	if(isset($argv[$i-1])){
-		            		$previousPart = $argv[$i-1];
-		            	}
-		            	$currentPart = $argv[$i];
+				if(isset($argv[$i-1])){
+					$previousPart = $argv[$i-1];
+				}
+				$currentPart = $argv[$i];
 
-           	           	// This does not account for previous arg being "--variable" without an = sign.
-           	           	// if(preg_match('/^--?.+/', $currentPart) == 0)
-		            	// adding a check on the previous arg
-                		if(preg_match('/^--?.+/', $currentPart) == 0 AND (strpos($previousPart, '--') !== 0 OR strpos($previousPart, '='))){
-		                    $this->args[] = $currentPart;
+				// This does not account for previous arg being "--variable" without an = sign.
+				// if(preg_match('/^--?.+/', $currentPart) == 0)
+				// adding a check on the previous arg
+				if(preg_match('/^--?.+/', $currentPart) == 0 AND (strpos($previousPart, '--') !== 0 OR strpos($previousPart, '='))){
+					$this->args[] = $currentPart;
 				}else{
 					break;
 				}
