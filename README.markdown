@@ -50,9 +50,9 @@ EXAMPLE
 
 The following example is used to upload the file /tmp/randomTextfile/foo.txt to a bucket called "mybucket" and names it "textfiles/bar.txt" (S3 does not actually support folders inside of a bucket, but you can put a slash in the file name). The key and secret I have used are just random codes that I have generated, so you will need to substitute them for real S3 keys:
  
-./s3up.php -ctxz \  
---key 4D2872664A354F2D454C \  
---secret u/0XdzB4WjtSuJnjnjYHKU/wh6Hlfvxpa/Yn5NQQ \  
+./s3up.php -ctxz \   
+--key 4D2872664A354F2D454C \   
+--secret u/0XdzB4WjtSuJnjnjYHKU/wh6Hlfvxpa/Yn5NQQ \   
 mybucket textfiles/foo.txt /tmp/randomTextfile/foo.txt
 
 UPDATES
