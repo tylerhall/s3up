@@ -27,38 +27,32 @@ You're done!
 USEAGE
 ------
 
-./s3up.php [-ctxz] [options] recipientBucket saveAs uploadFile
-  recipientBucket	- The bucket that your file will be uploaded to on s3.
-  saveAs			- The file name that the file will be given on s3 (before
-					  any version strings are added)
-  uploadFile		- The path to the file you wish to upload
-
-  -c        Use MD5 checksum to avoid duplicate PUTs, useful for resuming uploads.
-  -t        Append timestamp to uploaded filename for versioning.
-  -x        Set far future expiry headers on uploaded file.
-  -z        Upload a gzipped version in addition to the main file.
-
-  --version Appends a timestamp (string) of your choosing to each file.
-
-  --key     Amazon S3 key
-  --secret  Amazon S3 private key\n";
-
-            If --key and --secret are not specified
-            s3up will read values from the AMZ_KEY
-            and AMZ_SECRET environment variables.
+./s3up.php [-ctxz] [options] recipientBucket saveAs uploadFile  
+  
+recipientBucket	- The bucket that your file will be uploaded to on s3.  
+saveAs			- The file name that the file will be given on s3 (before any version strings are added)  
+uploadFile		- The path to the file you wish to upload  
+  
+-c        Use MD5 checksum to avoid duplicate PUTs, useful for resuming uploads.  
+-t        Append timestamp to uploaded filename for versioning.  
+-x        Set far future expiry headers on uploaded file.  
+-z        Upload a gzipped version in addition to the main file.  
+  
+--version Appends a timestamp (string) of your choosing to each file.  
+  
+--key     Amazon S3 key  
+--secret  Amazon S3 private key\n";  
+  
+If --key and --secret are not specified s3up will read values from the AMZ_KEY and AMZ_SECRET environment variables.
 
 EXAMPLE
 -------
 
-The following example is used to upload the file /tmp/randomTextfile/foo.txt to a
-bucket called "mybucket" and names it "textfiles/bar.txt" (S3 does not actually
-support folders inside of a bucket, but you can put a slash in the file name). The
-key and secret I have used are just random codes that I have generated, so you will
-need to substitute them for real S3 keys:
+The following example is used to upload the file /tmp/randomTextfile/foo.txt to a bucket called "mybucket" and names it "textfiles/bar.txt" (S3 does not actually support folders inside of a bucket, but you can put a slash in the file name). The key and secret I have used are just random codes that I have generated, so you will need to substitute them for real S3 keys:
  
-./s3up.php -ctxz \
---key 4D2872664A354F2D454C \
---secret u/0XdzB4WjtSuJnjnjYHKU/wh6Hlfvxpa/Yn5NQQ \
+./s3up.php -ctxz \  
+--key 4D2872664A354F2D454C \  
+--secret u/0XdzB4WjtSuJnjnjYHKU/wh6Hlfvxpa/Yn5NQQ \  
 mybucket textfiles/foo.txt /tmp/randomTextfile/foo.txt
 
 UPDATES
