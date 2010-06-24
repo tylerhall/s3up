@@ -1,157 +1,139 @@
 #!/usr/bin/php
 <?PHP
-    date_default_timezone_set('America/Los_Angeles');
+    $args = new Args();
 
-    $shortops = 'ctxzsu:p:v:r';
-    $longopts = array('key:', 'secret:', 'help');
-    $options = getopt($shortops, $longopts);
-
-    if(array_key_exists('help', $options) || $GLOBALS['argc'] == 1)
+    // Help info...
+    if(count($args->args) < 2)
     {
-        echo "Usage: " . $GLOBALS['argv'][0] . " [OPTION]... bucket-name/path file-or-folder-to-upload\n";
+        echo "Usage: {$GLOBALS['argv'][0]} [-ctxz] [options] s3-bucket s3-filename filename\n";
+        echo "  -c        Use MD5 checksum to avoid duplicate PUTs, useful for resuming uploads.\n";
+        echo "  -t        Append timestamp to uploaded filename for versioning.\n";
+        echo "  -x        Set far future expiry headers on uploaded file.\n";
+        echo "  -z        Upload a gzipped version in addition to the main file.\n";
         echo "\n";
-        echo "-c             Use MD5 checksum to avoid duplicate PUTs, useful for resuming uploads\n";
-        echo "-t             Append timestamp to uploaded filename for versioning\n";
-        echo "-x             Set far future expiry headers on uploaded file\n";
-        echo "-z             Upload a gzipped version in addition to the main file\n";
-        echo "-v             Appends a string of your choosing to each filename\n";
-        echo "-s             Compress images using Smush.it before uploading\n";
-        echo "-r             Recurse into directories\n";
+        echo "  --version Appends a timestamp (string) of your choosing to each file.\n";
         echo "\n";
-        echo "-u, --key      Amazon S3 key\n";
-        echo "-p, --secret   Amazon S3 private key\n";
+        echo "  --key     Amazon S3 key\n";
+        echo "  --secret  Amazon S3 private key\n";
         echo "\n";
-        echo "               If --key and --secret are not specified,\n";
-        echo "               s3up will read values from the AMZ_KEY\n";
-        echo "               and AMZ_SECRET environment variables.\n";
-        echo "\n";
+        echo "            If --key and --secret are not specified,\n";
+        echo "            s3up will read values from the AMZ_KEY\n";
+        echo "            and AMZ_SECRET environment variables.\n\n";
         exit;
     }
 
-    $AMZ_KEY = null;
-    $AMZ_SECRET = null;
-    if(isset($_ENV['AMZ_KEY'])) $AMZ_KEY = $_ENV['AMZ_KEY'];
-    if(isset($_ENV['AMZ_SECRET'])) $AMZ_SECRET = $_ENV['AMZ_SECRET'];
-    if(array_key_exists('u', $options)) $AMZ_KEY = $options['u'];
-    if(array_key_exists('p', $options)) $AMZ_SECRET = $options['p'];
-    if(array_key_exists('key', $options)) $AMZ_KEY = $options['key'];
-    if(array_key_exists('secret', $options)) $AMZ_SECRET = $options['secret'];
-    if(is_null($AMZ_KEY) || is_null($AMZ_SECRET))
-        die("Error: Amazon key and secret must be defined!\n");
+    // Get our Amazon credentials...
+    $AMZ_KEY = $args->flag('key') ? $args->flag('key') : @$_ENV['AMZ_KEY'];
+    $AMZ_SECRET = $args->flag('secret') ? $args->flag('secret') : @$_ENV['AMZ_SECRET'];
+    if(strlen($AMZ_KEY) == 0 || strlen($AMZ_SECRET) == 0)
+        die("Amazon key and private key must both be defined.\n");
 
-    $filename = $GLOBALS['argv'][$GLOBALS['argc'] - 1];
+    // Gather our arguments...
+    $s3_bucket = $args->args[0];
+    $s3_filename = $args->args[1];
 
-    if(!file_exists($filename))
-        die("Error: '$filename' does not exist\n");
-
-    if(is_dir($filename))
+    // Accept file to upload via stdin...
+    if(count($args->args) == 2)
     {
-        $recursive = array_key_exists('r', $options) ? true : false;
-        $base_dir = $filename;
-        dir_walk('upload', $filename, $recursive);
+        $filename = tempnam('/tmp', 's3up');
+        $src = fopen('php://stdin', 'r');
+        $dest = fopen($filename, 'w');
+        stream_copy_to_stream($src, $dest);
+        upload_static_file($s3_bucket, $s3_filename, $filename, $args);
     }
-    else
-        upload($filename);
-
-    function dir_walk($callback, $dir, $recursive = false)
+    elseif(substr($s3_filename, -1, 1) == '/') // Assume $s3_filename is actually a directory, so upload files "into" it instead
     {
-        if(is_null($dir)) return;
+        $s3_dir = $s3_filename;
+        if($s3_dir == '/') $s3_dir = '';
+        $s3_dir = ltrim($s3_dir, '/');
 
-        $dir = rtrim($dir, '/') . '/';
-
-        if($dh = opendir($dir))
+        for($i = 2; $i < count($args->args); $i++)
         {
-            while(($file = readdir($dh)) !== false)
+            $info = pathinfo($args->args[$i]);
+            if(is_dir($args->args[$i]))
             {
-                if($file == '.' || $file == '..')
-                    continue;
-
-                if(is_file($dir . $file))
-                    $callback($dir . $file);
-                elseif($recursive && is_dir($dir . $file))
-                    dir_walk($callback, $dir . $file, $recursive);
+                upload_directory($s3_bucket, $s3_dir, $info['dirname'], $info['basename'], $args);
             }
-
-            closedir($dh);
-        }
-    }
-
-    function upload($filename)
-    {
-        global $options;
-
-        if(!is_readable($filename))
-            echo "Error: Cannot read '$filename'\n";
-
-        if(strpos($filename, '.DS_Store') !== false) return;
-
-        if(array_key_exists('s', $options)
-        {
-            $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
-            if($ext == 'jpg' || $ext == 'jpeg' || $ext == 'png' || $ext == 'gif')
+            else
             {
-                $img = new SmushIt($filename);
-                if(isset($img->compressedUrl) && strlen($img->compressedUrl) > 0)
-                {
-                    $the_real_file = tempnam('/tmp', 's3up');
-                    $fh = fopen($the_real_file, 'w');
-                    $ch = curl_init();
-                    curl_setopt($ch, CURLOPT_URL,$img->compressedUrl);
-                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-                    curl_setopt($ch, CURLOPT_FILE, $fh);
-                    curl_exec($ch);
-                    print_r($img);
-                }
+                if(!file_exists($args->args[$i]) || !is_readable($args->args[$i]))
+                    die("Cannot read {$args->args[$i]}\n"); // TODO: Send to stderr instead
+                else
+                    upload_static_file($s3_bucket, $s3_dir . $info['basename'], $args->args[$i], $args);
             }
         }
-
-        upload_static_file($filename, $the_real_file);
+    }
+    else // Upload a single file...
+    {
+        $filename = $args->args[2];
+        if(!file_exists($filename) || !is_readable($filename))
+            die("Cannot read $filename\n");
+        upload_static_file($s3_bucket, $s3_filename, $filename, $args);
     }
 
-    function upload_static_file($filename, $the_real_file = null)
+    // TODO: Can probably refactor this as it contains duplicate code
+    function upload_directory($bucket, $s3_dir, $local_path, $local_dir, $args)
     {
-        global $AMZ_KEY, $AMZ_SECRET, $options, $base_dir;
+        echo "Processing dir: $local_path/$local_dir --> $s3_dir$local_dir\n";
+        $dhandle = opendir("$local_path/$local_dir");
+        if(!$dhandle)
+            die("Cannot open directory $local_dir\n");
 
-        $bucket_and_path = $GLOBALS['argv'][$GLOBALS['argc'] - 2];
-        $bucket = array_shift(explode('/', $bucket_and_path));
-        if(strpos($bucket_and_path, '/') !== false)
-            $path = substr($bucket_and_path, strpos($bucket_and_path, '/'));
-        else
-            $path = '';
+        while(false !== ($file = readdir($dhandle)))
+        {
+            if($file == '.' || $file == '..') continue;
+
+            $file = "$local_path/$local_dir/$file";
+            if(is_dir($file))
+            {
+                upload_directory($bucket, $s3_dir, $local_path, $local_dir . '/' . basename($file), $args);
+            }
+            else
+            {
+                if(!file_exists($file) || !is_readable($file))
+                    die("Cannot read $file\n");
+                else
+                    upload_static_file($bucket, $s3_dir.$local_dir."/".basename($file), $file, $args);
+            }
+        }
+        closedir($dhandle);
+    }
+
+    function upload_static_file($bucket, $remote_name, $local_name, $args)
+    {
+        global $AMZ_KEY, $AMZ_SECRET;
 
         // Prepare any additional headers...
         $headers = array();
-        if(array_key_exists('x', $options))
+        if($args->flag('x'))
             $headers['Expires'] = date('D, j M Y H:i:s', time() + (86400 * 365 * 10)) . ' GMT'; // 10 years
 
-        $info = pathinfo($filename);
-        $dir = $info['dirname'] . '/';
-        if($dir == './') $dir = '';
-
         // Version the file?
-        if(array_key_exists('v', $options))
-            $remote_name = $dir . $info['filename'] . $options['v'];
-        elseif(array_key_exists('t', $options))
-            $remote_name = $dir . $info['filename'] . '.' . date('YmdHis');
-        else
-            $remote_name = $dir . $info['filename'];
+        if($args->flag('version'))
+        {
+            $info = pathinfo($remote_name);
+            $dir = $info['dirname'] . '/';
+            if($dir == './') $dir = '';
+            $remote_name = $dir . $info['filename'] . $args->flag('version') . '.' . $info['extension'];
+        }
+        elseif($args->flag('t'))
+        {
+            $info = pathinfo($remote_name);
+            $dir = $info['dirname'] . '/';
+            if($dir == './') $dir = '';
+            $remote_name = $dir . $info['filename'] . '.' . date('YmdHis') . '.' . $info['extension'];
+        }
 
-        if(strlen($info['extension']) > 0)
-            $remote_name .= '.';
-
-        $remote_name .= $info['extension'];
-
-        $remote_name = preg_replace("!^$base_dir!", '', $remote_name);
 
         // Begin the upload proccess
         $s3 = new S3($AMZ_KEY, $AMZ_SECRET);
 
         // Should we check to see if the file has already been uploaded?
         $ok_to_upload = true;
-        if(array_key_exists('c', $options))
+        if($args->flag('c'))
         {
             $info = $s3->getObjectInfo($bucket, $remote_name);
-            if(substr($info['ETag'], 1, -2) == md5_file($filename))
+            if(substr($info['ETag'], 1, -2) == md5_file($local_name))
             {
                 $ok_to_upload = false;
                 echo "Skipping (MD5 match): http://$bucket.s3.amazonaws.com/$remote_name\n";
@@ -161,32 +143,28 @@
         // Actually upload the file...
         if($ok_to_upload)
         {
-            if(!is_null($the_real_file)) $filename = $the_real_file;
-            if($s3->uploadFile($bucket, $remote_name, $filename, true, $headers))
+            if($s3->uploadFile($bucket, $remote_name, $local_name, true, $headers))
                 echo "http://$bucket.s3.amazonaws.com/$remote_name\n";
             else
-                echo "Error: Unable to upload '$filename'\n";
+                die("Unable to upload '$local_name' to '$remote_name'\n");
         }
 
         // Upload the gzipped version...
-        if(array_key_exists('z', $options))
+        if($args->flag('z'))
         {
             $info = pathinfo($remote_name);
-            $remote_name = $dir . $info['filename'] . '.gz';
-            if(strlen($info['extension']) > 0)
-                $remote_name .= '.';
-            $remote_name .= $info['extension'];
+            $dir = $info['dirname'] . '/';
+            if($dir == './') $dir = '';
+            $remote_name = $dir . $info['filename'] . '.gz.' . $info['extension'];
 
-
-            $gzname = tempnam('/tmp', 's3up');
-            if(!is_null($the_real_file)) $filename = $the_real_file;
-            shell_exec(sprintf('gzip -c %s > %s', escapeshellarg($filename), $gzname));
+            $gzname = tempnam('/tmp', 's3up') . '.' . $info['extension'];
+            shell_exec(sprintf('gzip -c %s > %s', escapeshellarg($local_name), $gzname));
 
             $headers['Content-Encoding'] = 'gzip';
 
             // Should we check to see if the file has already been uploaded?
             $ok_to_upload = true;
-            if(array_key_exists('c', $options))
+            if($args->flag('c'))
             {
                 $info = $s3->getObjectInfo($bucket, $remote_name);
                 if(substr($info['ETag'], 1, -2) == md5_file($local_name))
@@ -202,7 +180,7 @@
                 if($s3->uploadFile($bucket, $remote_name, $gzname, true, $headers))
                     echo "http://$bucket.s3.amazonaws.com/$remote_name\n";
                 else
-                    echo "Error: Unable to upload '$filename' (gzip version)\n";
+                    die("Unable to upload '$local_name' to '$remote_name' (gzip version)\n");
             }
         }
     }
@@ -228,8 +206,89 @@
             return true;
         }
 
+        public function listBuckets()
+        {
+            $request = array('verb' => 'GET', 'resource' => '/');
+            $result = $this->sendRequest($request);
+            $xml = simplexml_load_string($result);
+
+            if($xml === false || !isset($xml->Buckets->Bucket))
+                return false;
+
+            $buckets = array();
+            foreach($xml->Buckets->Bucket as $bucket)
+                $buckets[] = (string) $bucket->Name;
+            return $buckets;
+        }
+
+        public function createBucket($name)
+        {
+            $request = array('verb' => 'PUT', 'resource' => "/$name/");
+            $result = $this->sendRequest($request);
+            return $this->curlInfo['http_code'] == '200';
+        }
+
+        public function deleteBucket($name)
+        {
+            $request = array('verb' => 'DELETE', 'resource' => "/$name/");
+            $result = $this->sendRequest($request);
+            return $this->curlInfo['http_code'] == '204';
+        }
+
+        public function getBucketLocation($name)
+        {
+            $request = array('verb' => 'GET', 'resource' => "/$name/?location");
+            $result = $this->sendRequest($request);
+            $xml = simplexml_load_string($result);
+
+            if($xml === false)
+                return false;
+
+            return (string) $xml->LocationConstraint;
+        }
+
+        public function getBucketContents($name, $prefix = null, $marker = null, $delimeter = null, $max_keys = null)
+        {
+            $contents = array();
+
+            do
+            {
+                $q = array();
+                if(!is_null($prefix)) $q[] = 'prefix=' . $prefix;
+                if(!is_null($marker)) $q[] = 'marker=' . $marker;
+                if(!is_null($delimeter)) $q[] = 'delimeter=' . $delimeter;
+                if(!is_null($max_keys)) $q[] = 'max-keys=' . $max_keys;
+                $q = implode('&', $q);
+                if(strlen($q) > 0)
+                    $q = '?' . $q;
+
+                $request = array('verb' => 'GET', 'resource' => "/$name/$q");
+                $result = $this->sendRequest($request);
+                $xml = simplexml_load_string($result);
+
+                if($xml === false)
+                    return false;
+
+                foreach($xml->Contents as $item)
+                    $contents[(string) $item->Key] = array('LastModified' => (string) $item->LastModified, 'ETag' => (string) $item->ETag, 'Size' => (string) $item->Size);
+
+                $marker = (string) $xml->Marker;
+            }
+            while((string) $xml->IsTruncated == 'true' && is_null($max_keys));
+
+            return $contents;
+        }
+
         public function uploadFile($bucket_name, $s3_path, $fs_path, $web_accessible = false, $headers = null)
         {
+            // Some useful headers you can set manually by passing in an associative array...
+            // Cache-Control
+            // Content-Type
+            // Content-Disposition (alternate filename to present during web download)
+            // Content-Encoding
+            // x-amz-meta-*
+            // x-amz-acl (private, public-read, public-read-write, authenticated-read)
+
             $s3_path = str_replace(' ', '%20', $s3_path);
 
             $request = array('verb' => 'PUT',
@@ -253,13 +312,36 @@
             if(!isset($headers['Content-Type']))
             {
                 $ext = pathinfo($fs_path, PATHINFO_EXTENSION);
-                $headers['Content-Type'] = isset($this->mimeTypes[strtolower($ext)]) ? $this->mimeTypes[strtolower($ext)] : 'application/octet-stream';
+                $headers['Content-Type'] = isset($this->mimeTypes[$ext]) ? $this->mimeTypes[$ext] : 'application/octet-stream';
             }
             $request['content-type'] = $headers['Content-Type'];
 
             $result = $this->sendRequest($request, $headers, $curl_opts);
             fclose($fh);
             return $this->curlInfo['http_code'] == '200';
+        }
+
+        public function deleteObject($bucket_name, $s3_path)
+        {
+            $request = array('verb' => 'DELETE', 'resource' => "/$bucket_name/$s3_path");
+            $result = $this->sendRequest($request);
+            return $this->curlInfo['http_code'] == '204';
+        }
+
+        public function copyObject($bucket_name, $s3_path, $dest_bucket_name, $dest_s3_path)
+        {
+            $request = array('verb' => 'PUT', 'resource' => "/$dest_bucket_name/$dest_s3_path");
+            $headers = array('x-amz-copy-source' => "/$bucket_name/$s3_path");
+            $result = $this->sendRequest($request, $headers);
+
+            if($this->curlInfo['http_code'] != '200')
+                return false;
+
+            $xml = simplexml_load_string($result);
+            if($xml === false)
+                return false;
+
+            return isset($xml->LastModified);
         }
 
         public function getObjectInfo($bucket_name, $s3_path)
@@ -281,6 +363,43 @@
                 return false;
 
             return $info;
+        }
+
+        public function downloadFile($bucket_name, $s3_path, $fs_path)
+        {
+            $request = array('verb' => 'GET', 'resource' => "/$bucket_name/$s3_path");
+
+            $fh = fopen($fs_path, 'w');
+            $curl_opts = array('CURLOPT_FILE' => $fh);
+
+            if(is_null($headers))
+                $headers = array();
+
+            $result = $this->sendRequest($request, $headers, $curl_opts);
+            fclose($fh);
+            return $this->curlInfo['http_code'] == '200';
+
+        }
+
+        public function getAuthenticatedURLRelative($bucket_name, $s3_path, $seconds_till_expires = 3600)
+        {
+            return $this->getAuthenticatedURL($bucket_name, $s3_path, gmmktime() + $seconds_till_expires);
+        }
+
+        public function getAuthenticatedURL($bucket_name, $s3_path, $expires_on)
+        {
+            // $expires_on must be a GMT Unix timestamp
+
+            $request = array('verb' => 'GET', 'resource' => "/$bucket_name/$s3_path", 'date' => $expires_on);
+            $signature = urlencode($this->signature($request));
+
+            $url = sprintf("http://%s.s3.amazonaws.com/%s?AWSAccessKeyId=%s&Expires=%s&Signature=%s",
+                            $bucket_name,
+                            $s3_path,
+                            $this->key,
+                            $expires_on,
+                            $signature);
+            return $url;
         }
 
         private function sendRequest($request, $headers = null, $curl_opts = null)
@@ -409,86 +528,66 @@
         "xlc" => "application/vnd.ms-excel", "xlm" => "application/vnd.ms-excel", "xls" => "application/vnd.ms-excel", "xlt" => "application/vnd.ms-excel", "xlw" => "application/vnd.ms-excel", "xof" => "x-world/x-vrml", "xpm" => "image/x-xpixmap", "xwd" => "image/x-xwindowdump", "z" => "application/x-compress", "zip" => "application/zip");
     }
 
-    class SmushIt
+    class Args
     {
-        const SMUSH_URL = 'http://www.smushit.com/ysmush.it/ws.php?';
+        public $flags;
+        public $args;
 
-        public $filename;
-        public $url;
-        public $compressedUrl;
-        public $size;
-        public $compressedSize;
-        public $savings;
-        public $error;
-
-        public function __construct($data = null)
+        public function __construct()
         {
-            if(!is_null($data))
+            $this->flags = array();
+            $this->args  = array();
+
+            $argv = $GLOBALS['argv'];
+            array_shift($argv);
+
+            for($i = 0; $i < count($argv); $i++)
             {
-                if(preg_match('/https?:\/\//', $data) == 1)
-                    $this->smushURL($data);
+                $str = $argv[$i];
+
+                // --foo
+                if(strlen($str) > 2 && substr($str, 0, 2) == '--')
+                {
+                    $str = substr($str, 2);
+                    $parts = explode('=', $str);
+                    $this->flags[$parts[0]] = true;
+
+                    // Does not have an =, so choose the next arg as its value
+                    if(count($parts) == 1 && isset($argv[$i + 1]) && preg_match('/^--?.+/', $argv[$i + 1]) == 0)
+                    {
+                        $this->flags[$parts[0]] = $argv[$i + 1];
+                    }
+                    elseif(count($parts) == 2) // Has a =, so pick the second piece
+                    {
+                        $this->flags[$parts[0]] = $parts[1];
+                    }
+                }
+                elseif(strlen($str) == 2 && $str[0] == '-') // -a
+                {
+                    $this->flags[$str[1]] = true;
+                    if(isset($argv[$i + 1]) && preg_match('/^--?.+/', $argv[$i + 1]) == 0)
+                        $this->flags[$str[1]] = $argv[$i + 1];
+                }
+                elseif(strlen($str) > 1 && $str[0] == '-') // -abcdef
+                {
+                    for($j = 1; $j < strlen($str); $j++)
+                        $this->flags[$str[$j]] = true;
+                }
+            }
+
+            for($i = count($argv) - 1; $i >= 0; $i--)
+            {
+                if(preg_match('/^--?.+/', $argv[$i]) == 0)
+                    $this->args[] = $argv[$i];
                 else
-                    $this->smushFile($data);
+                    break;
             }
+
+            $this->args = array_reverse($this->args);
         }
 
-        public function smushURL($url)
+        public function flag($name)
         {
-            $this->url = $url;
-
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, self::SMUSH_URL . 'img=' . $url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-            $json_str = curl_exec($ch);
-            curl_close($ch);
-
-            return $this->parseResponse($json_str);
-        }
-
-        public function smushFile($filename)
-        {
-            $this->filename = $filename;
-
-            if(!is_readable($filename))
-            {
-                $this->error = 'Could not read file';
-                return false;
-            }
-
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, self::SMUSH_URL);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, array('files' => '@' . $filename));
-            $json_str = curl_exec($ch);
-            curl_close($ch);
-
-            return $this->parseResponse($json_str);
-        }
-
-        private function parseResponse($json_str)
-        {
-            $this->error = null;
-            $json = json_decode($json_str);
-
-            if(is_null($json))
-            {
-                $this->error = 'Bad response from Smush.it web service';
-                return false;
-            }
-
-            if(isset($json->error))
-            {
-                $this->error = $json->error;
-                return false;
-            }
-
-            $this->size           = $json->src_size;
-            $this->compressedUrl  = $json->dest;
-            $this->compressedSize = $json->dest_size;
-            $this->savings        = $json->percent;
-            return true;
+            return isset($this->flags[$name]) ? $this->flags[$name] : false;
         }
     }
