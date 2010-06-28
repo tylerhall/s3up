@@ -2,7 +2,7 @@
 <?PHP
     date_default_timezone_set('America/Los_Angeles');
 
-    $shortops = 'ctzsu:p:v:r';
+    $shortops = 'ctzsu:p:v:rw';
     $longopts = array('key:', 'secret:', 'help');
     $options = getopt($shortops, $longopts);
 
@@ -16,6 +16,7 @@
         echo "-v             Appends a string of your choosing to each filename\n";
         echo "-s             Compress images using Smush.it before uploading\n";
         echo "-r             Recurse into directories\n";
+        echo "-w             Only upload static web files\n";
         echo "\n";
         echo "-u, --key      Amazon S3 key\n";
         echo "-p, --secret   Amazon S3 private key\n";
@@ -29,8 +30,8 @@
 
     $AMZ_KEY = null;
     $AMZ_SECRET = null;
-    if(isset($_ENV['AMZ_KEY'])) $AMZ_KEY = $_ENV['AMZ_KEY'];
-    if(isset($_ENV['AMZ_SECRET'])) $AMZ_SECRET = $_ENV['AMZ_SECRET'];
+    if(isset($_SERVER['AMZ_KEY'])) $AMZ_KEY = $_SERVER['AMZ_KEY'];
+    if(isset($_SERVER['AMZ_SECRET'])) $AMZ_SECRET = $_SERVER['AMZ_SECRET'];
     if(array_key_exists('u', $options)) $AMZ_KEY = $options['u'];
     if(array_key_exists('p', $options)) $AMZ_SECRET = $options['p'];
     if(array_key_exists('key', $options)) $AMZ_KEY = $options['key'];
@@ -84,9 +85,12 @@
 
         if(strpos($filename, '.DS_Store') !== false) return;
 
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+		$allowed = array('jpg', 'jpeg', 'png', 'gif', 'js', 'fla', 'flv', 'ico');
+		if(array_key_exists('w', $options) && !in_array($ext, $allowed)) return;
+
         if(array_key_exists('s', $options))
         {
-            $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
             if($ext == 'jpg' || $ext == 'jpeg' || $ext == 'png' || $ext == 'gif')
             {
                 $img = new SmushIt($filename);
@@ -99,18 +103,20 @@
                     curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
                     curl_setopt($ch, CURLOPT_FILE, $fh);
                     curl_exec($ch);
+					upload_static_file($filename, $the_real_file);
+					return;
                 }
             }
         }
 
-        upload_static_file($filename, $the_real_file);
+        upload_static_file($filename);
     }
 
     function upload_static_file($filename, $the_real_file = null)
     {
         global $AMZ_KEY, $AMZ_SECRET, $options, $base_dir;
 
-        $bucket_and_path = $GLOBALS['argv'][$GLOBALS['argc'] - 2];
+        $bucket_and_path = rtrim($GLOBALS['argv'][$GLOBALS['argc'] - 2], '/') . '/';
         $bucket = array_shift(explode('/', $bucket_and_path));
         if(strpos($bucket_and_path, '/') !== false)
             $path = substr($bucket_and_path, strpos($bucket_and_path, '/'));
@@ -318,7 +324,7 @@
             if($retries == 3)
             {
                 fwrite(STDERR, 'Curl error: ' . curl_error($ch) . "\n");
-                print_r($this->curlInfo);
+                // print_r($this->curlInfo);
                 fwrite(STDERR,"AWS Response:\n$result");
             }
             curl_close($ch);
