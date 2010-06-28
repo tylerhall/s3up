@@ -2,7 +2,7 @@
 <?PHP
     date_default_timezone_set('America/Los_Angeles');
 
-    $shortops = 'ctxzsu:p:v:r';
+    $shortops = 'ctzsu:p:v:r';
     $longopts = array('key:', 'secret:', 'help');
     $options = getopt($shortops, $longopts);
 
@@ -12,7 +12,6 @@
         echo "\n";
         echo "-c             Use MD5 checksum to avoid duplicate PUTs, useful for resuming uploads\n";
         echo "-t             Append timestamp to uploaded filename for versioning\n";
-        echo "-x             Set far future expiry headers on uploaded file\n";
         echo "-z             Upload a gzipped version in addition to the main file\n";
         echo "-v             Appends a string of your choosing to each filename\n";
         echo "-s             Compress images using Smush.it before uploading\n";
@@ -120,8 +119,7 @@
 
         // Prepare any additional headers...
         $headers = array();
-        if(array_key_exists('x', $options))
-            $headers['Expires'] = date('D, j M Y H:i:s', time() + (86400 * 365 * 10)) . ' GMT'; // 10 years
+        $headers['Expires'] = date('D, j M Y H:i:s', time() + (86400 * 365 * 10)) . ' GMT'; // 10 years
 
         $info = pathinfo($filename);
         $dir = $info['dirname'] . '/';
@@ -129,19 +127,19 @@
 
         // Version the file?
         if(array_key_exists('v', $options))
-            $remote_name = $dir . $info['filename'] . $options['v'];
+            $remote_name = $path . $dir . $info['filename'] . $options['v'];
         elseif(array_key_exists('t', $options))
-            $remote_name = $dir . $info['filename'] . '.' . date('YmdHis');
+            $remote_name = $path . $dir . $info['filename'] . '.' . date('YmdHis');
         else
-            $remote_name = $dir . $info['filename'];
+            $remote_name = $path . $dir . $info['filename'];
 
         if(strlen($info['extension']) > 0)
             $remote_name .= '.';
 
         $remote_name .= $info['extension'];
-        // echo "$remote_name --- ";
         // $remote_name = preg_replace("!^$base_dir!", '', $remote_name);
-        // echo "$remote_name\n";
+        $remote_name = ltrim($remote_name, '/');
+
 
         // Begin the upload proccess
         $s3 = new S3($AMZ_KEY, $AMZ_SECRET);
@@ -172,37 +170,38 @@
         if(array_key_exists('z', $options))
         {
             $info = pathinfo($remote_name);
-            $remote_name = $dir . $info['filename'] . '.gz';
-            if(strlen($info['extension']) > 0)
-                $remote_name .= '.';
-            $remote_name .= $info['extension'];
-
-
-            $gzname = tempnam('/tmp', 's3up');
-            if(!is_null($the_real_file)) $filename = $the_real_file;
-            shell_exec(sprintf('gzip -c %s > %s', escapeshellarg($filename), $gzname));
-
-            $headers['Content-Encoding'] = 'gzip';
-
-            // Should we check to see if the file has already been uploaded?
-            $ok_to_upload = true;
-            if(array_key_exists('c', $options))
+            if(in_array(strtolower($info['extension']), array('css', 'js')))
             {
-                $info = $s3->getObjectInfo($bucket, $remote_name);
-                if(substr($info['ETag'], 1, -2) == md5_file($local_name))
+                $remote_name = $info['dirname'] . '/' . $info['filename'] . '.gz';
+                if(strlen($info['extension']) > 0)
+                    $remote_name .= '.' . $info['extension'];
+
+                $gzname = tempnam('/tmp', 's3up');
+                if(!is_null($the_real_file)) $filename = $the_real_file;
+                shell_exec(sprintf('gzip -c %s > %s', escapeshellarg($filename), $gzname));
+
+                $headers['Content-Encoding'] = 'gzip';
+
+                // Should we check to see if the file has already been uploaded?
+                $ok_to_upload = true;
+                if(array_key_exists('c', $options))
                 {
-                    $ok_to_upload = false;
-                    echo "Skipping (MD5 match): http://$bucket.s3.amazonaws.com/$remote_name\n";
+                    $info = $s3->getObjectInfo($bucket, $remote_name);
+                    if(substr($info['ETag'], 1, -2) == md5_file($local_name))
+                    {
+                        $ok_to_upload = false;
+                        echo "Skipping (MD5 match): http://$bucket.s3.amazonaws.com/$remote_name\n";
+                    }
                 }
-            }
 
-            // Actually upload the file...
-            if($ok_to_upload)
-            {
-                if($s3->uploadFile($bucket, $remote_name, $gzname, true, $headers))
-                    echo "http://$bucket.s3.amazonaws.com/$remote_name\n";
-                else
-                    echo "Error: Unable to upload '$filename' (gzip version)\n";
+                // Actually upload the file...
+                if($ok_to_upload)
+                {
+                    if($s3->uploadFile($bucket, $remote_name, $gzname, true, $headers))
+                        echo "http://$bucket.s3.amazonaws.com/$remote_name\n";
+                    else
+                        echo "Error: Unable to upload '$filename' (gzip version)\n";
+                }
             }
         }
     }
