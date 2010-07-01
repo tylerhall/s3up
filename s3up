@@ -86,7 +86,7 @@
         if(strpos($filename, '.DS_Store') !== false) return;
 
         $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
-		$allowed = array('jpg', 'jpeg', 'png', 'gif', 'js', 'fla', 'flv', 'ico');
+		$allowed = array('jpg', 'jpeg', 'png', 'gif', 'js', 'fla', 'flv', 'ico', 'css');
 		if(array_key_exists('w', $options) && !in_array($ext, $allowed)) return;
 
         if(array_key_exists('s', $options))
@@ -257,8 +257,9 @@
 
             if(!isset($headers['Content-Type']))
             {
-                $ext = pathinfo($fs_path, PATHINFO_EXTENSION);
+                $ext = pathinfo($s3_path, PATHINFO_EXTENSION);
                 $headers['Content-Type'] = isset($this->mimeTypes[strtolower($ext)]) ? $this->mimeTypes[strtolower($ext)] : 'application/octet-stream';
+				print_r($headers);
             }
             $request['content-type'] = $headers['Content-Type'];
 
