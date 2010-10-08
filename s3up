@@ -226,7 +226,7 @@
 
                 $gzname = tempnam('/tmp', 's3up');
                 if(!is_null($the_real_file)) $filename = $the_real_file;
-                shell_exec(sprintf('gzip -c %s > %s', escapeshellarg($filename), $gzname));
+                shell_exec(sprintf('gzip -c %s > %s', escapeshellarg($filename), escapeshellarg($gzname)));
                 logMessage("The '$filename' has gziped to '$gzname'");
 
                 $headers['Content-Encoding'] = 'gzip';
