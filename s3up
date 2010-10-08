@@ -175,7 +175,7 @@
 
         // Version the file?
         if(array_key_exists('v', $options))
-            $remote_name = $path . $dir . $info['filename'] . $options['v'];
+            $remote_name = $path . $options['v'] . '/' . $dir . $info['filename'];
         elseif(array_key_exists('t', $options))
             $remote_name = $path . $dir . $info['filename'] . '.' . date('YmdHis');
         else
