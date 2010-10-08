@@ -2,7 +2,7 @@
 <?PHP
     date_default_timezone_set('America/Los_Angeles');
 
-    $shortops = 'ctzsu:p:v:rw';
+    $shortops = 'ctzsu:p:v:rwf:';
     $longopts = array('key:', 'secret:', 'log:', 'help');
     $options = getopt($shortops, $longopts);
 
@@ -17,6 +17,7 @@
         echo "-s             Compress images using Smush.it before uploading\n";
         echo "-r             Recurse into directories\n";
         echo "-w             Only upload static web files\n";
+        echo "-f             Folder in S3\n";
         echo "\n";
         echo "-u, --key      Amazon S3 key\n";
         echo "-p, --secret   Amazon S3 private key\n";
@@ -167,6 +168,10 @@
         $info = pathinfo($filename);
         $dir = $info['dirname'] . '/';
         if (substr($dir, 0, 2) === './') $dir = substr($dir, 2);
+
+        if (!empty($options['f'])) {
+            $dir = $options['f'] . '/' . $dir;
+        }
 
         // Version the file?
         if(array_key_exists('v', $options))
