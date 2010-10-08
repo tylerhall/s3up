@@ -130,7 +130,7 @@
 
         $info = pathinfo($filename);
         $dir = $info['dirname'] . '/';
-        if($dir == './') $dir = '';
+        if (substr($dir, 0, 2) === './') $dir = substr($dir, 2);
 
         // Version the file?
         if(array_key_exists('v', $options))
