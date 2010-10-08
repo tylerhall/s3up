@@ -2,7 +2,7 @@
 <?PHP
     date_default_timezone_set('America/Los_Angeles');
 
-    $shortops = 'ctzsu:p:v:rwf:';
+    $shortops = 'ctzosu:p:v:rwf:';
     $longopts = array('key:', 'secret:', 'log:', 'help');
     $options = getopt($shortops, $longopts);
 
@@ -13,6 +13,7 @@
         echo "-c             Use MD5 checksum to avoid duplicate PUTs, useful for resuming uploads\n";
         echo "-t             Append timestamp to uploaded filename for versioning\n";
         echo "-z             Upload a gzipped version in addition to the main file\n";
+        echo "-o             If used with -z option, send only a gzipped file with same name\n";
         echo "-v             Appends a string of your choosing to each filename\n";
         echo "-s             Compress images using Smush.it before uploading\n";
         echo "-r             Recurse into directories\n";
@@ -204,7 +205,8 @@
         }
 
         // Actually upload the file...
-        if($ok_to_upload)
+        $isJsOrCss = !empty($info['extension']) && in_array(strtolower($info['extension']), array('css', 'js'));
+        if($ok_to_upload && (!$isJsOrCss || !array_key_exists('o', $options)))
         {
             if(!is_null($the_real_file)) $filename = $the_real_file;
             logMessage("Uploading...");
@@ -221,11 +223,13 @@
         if(array_key_exists('z', $options))
         {
             $info = pathinfo($remote_name);
-            if(in_array(strtolower($info['extension']), array('css', 'js')))
+            if($isJsOrCss)
             {
-                $remote_name = $info['dirname'] . '/' . $info['filename'] . '.gz';
-                if(strlen($info['extension']) > 0)
-                    $remote_name .= '.' . $info['extension'];
+                if (!array_key_exists('o', $options)) {
+                    $remote_name = $info['dirname'] . '/' . $info['filename'] . '.gz';
+                    if(strlen($info['extension']) > 0)
+                        $remote_name .= '.' . $info['extension'];
+                }
 
                 $gzname = tempnam('/tmp', 's3up');
                 if(!is_null($the_real_file)) $filename = $the_real_file;
