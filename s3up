@@ -117,7 +117,8 @@
         global $AMZ_KEY, $AMZ_SECRET, $options, $base_dir;
 
         $bucket_and_path = rtrim($GLOBALS['argv'][$GLOBALS['argc'] - 2], '/') . '/';
-        $bucket = array_shift(explode('/', $bucket_and_path));
+        $bucket_list = explode('/', $bucket_and_path);
+        $bucket = array_shift($bucket_list);
         if(strpos($bucket_and_path, '/') !== false)
             $path = substr($bucket_and_path, strpos($bucket_and_path, '/'));
         else
@@ -139,7 +140,7 @@
         else
             $remote_name = $path . $dir . $info['filename'];
 
-        if(strlen($info['extension']) > 0)
+        if(!empty($info['extension']))
             $remote_name .= '.';
 
         $remote_name .= $info['extension'];
