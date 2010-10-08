@@ -182,12 +182,10 @@
             $remote_name = $path . $dir . $info['filename'];
 
         if(!empty($info['extension']))
-            $remote_name .= '.';
+            $remote_name .= '.' . $info['extension'];
 
-        $remote_name .= $info['extension'];
         // $remote_name = preg_replace("!^$base_dir!", '', $remote_name);
         $remote_name = ltrim($remote_name, '/');
-
 
         // Begin the upload proccess
         $s3 = new S3($AMZ_KEY, $AMZ_SECRET);
