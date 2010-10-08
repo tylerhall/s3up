@@ -3,7 +3,7 @@
     date_default_timezone_set('America/Los_Angeles');
 
     $shortops = 'ctzsu:p:v:rw';
-    $longopts = array('key:', 'secret:', 'help');
+    $longopts = array('key:', 'secret:', 'log:', 'help');
     $options = getopt($shortops, $longopts);
 
     if(array_key_exists('help', $options) || $GLOBALS['argc'] == 1)
@@ -20,6 +20,7 @@
         echo "\n";
         echo "-u, --key      Amazon S3 key\n";
         echo "-p, --secret   Amazon S3 private key\n";
+        echo "--log          Log to specific file\n";
         echo "\n";
         echo "               If --key and --secret are not specified,\n";
         echo "               s3up will read values from the AMZ_KEY\n";
@@ -44,14 +45,44 @@
     if(!file_exists($filename))
         die("Error: '$filename' does not exist\n");
 
+    logMessage("\n\n\nStarting s3up...");
+    logMessage("Filename: $filename");
+
     if(is_dir($filename))
     {
         $recursive = array_key_exists('r', $options) ? true : false;
         $base_dir = $filename;
+        logMessage('Will upload ' . ($recursive ? 'recursively ' : '') . "from $base_dir");
         dir_walk('upload', $filename, $recursive);
     }
-    else
+    else {
+        logMessage("Uploading single file: $filename");
         upload($filename);
+    }
+    logMessage('Finished!');
+
+    function logMessage($message)
+    {
+        static $logFile = null;
+        if ($logFile === null) {
+            global $options;
+            if (empty($options['log'])) {
+                $logFile = false;
+            } else {
+                $logFile = $options['log'];
+                if (file_exists($logFile)) {
+                    unlink($logFile);
+                }
+            }
+        }
+
+        if (!$logFile) {
+            return;
+        }
+
+        file_put_contents($logFile, print_r($message, true) . PHP_EOL, FILE_APPEND);
+    }
+
 
     function dir_walk($callback, $dir, $recursive = false)
     {
@@ -59,6 +90,7 @@
 
         $dir = rtrim($dir, '/') . '/';
 
+        logMessage("Uploading directory $dir");
         if($dh = opendir($dir))
         {
             while(($file = readdir($dh)) !== false)
@@ -74,6 +106,7 @@
 
             closedir($dh);
         }
+        logMessage("Upload of $dir done.");
     }
 
     function upload($filename)
@@ -84,6 +117,8 @@
             echo "Error: Cannot read '$filename'\n";
 
         if(strpos($filename, '.DS_Store') !== false) return;
+
+        logMessage("Starting upload of $filename...");
 
         $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
 		$allowed = array('jpg', 'jpeg', 'png', 'gif', 'js', 'fla', 'flv', 'ico', 'css');
@@ -103,6 +138,7 @@
                     curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
                     curl_setopt($ch, CURLOPT_FILE, $fh);
                     curl_exec($ch);
+                    logMessage("This file is a image and was smushed.");
 					upload_static_file($filename, $the_real_file);
 					return;
                 }
@@ -160,6 +196,7 @@
             {
                 $ok_to_upload = false;
                 echo "Skipping (MD5 match): http://$bucket.s3.amazonaws.com/$remote_name\n";
+                logMessage("Skipping (MD5 match): http://$bucket.s3.amazonaws.com/$remote_name");
             }
         }
 
@@ -167,10 +204,14 @@
         if($ok_to_upload)
         {
             if(!is_null($the_real_file)) $filename = $the_real_file;
-            if($s3->uploadFile($bucket, $remote_name, $filename, true, $headers))
+            logMessage("Uploading...");
+            if($s3->uploadFile($bucket, $remote_name, $filename, true, $headers)) {
                 echo "http://$bucket.s3.amazonaws.com/$remote_name\n";
-            else
+                logMessage("File '$filename' uploaded to 'http://$bucket.s3.amazonaws.com/$remote_name'");
+            } else {
                 echo "Error: Unable to upload '$filename'\n";
+                logMessage("Upload of '$filename' failed.");
+            }
         }
 
         // Upload the gzipped version...
@@ -186,6 +227,7 @@
                 $gzname = tempnam('/tmp', 's3up');
                 if(!is_null($the_real_file)) $filename = $the_real_file;
                 shell_exec(sprintf('gzip -c %s > %s', escapeshellarg($filename), $gzname));
+                logMessage("The '$filename' has gziped to '$gzname'");
 
                 $headers['Content-Encoding'] = 'gzip';
 
@@ -198,16 +240,21 @@
                     {
                         $ok_to_upload = false;
                         echo "Skipping (MD5 match): http://$bucket.s3.amazonaws.com/$remote_name\n";
+                        logMessage("Skipping (MD5 match): http://$bucket.s3.amazonaws.com/$remote_name");
                     }
                 }
 
                 // Actually upload the file...
                 if($ok_to_upload)
                 {
-                    if($s3->uploadFile($bucket, $remote_name, $gzname, true, $headers))
+                    logMessage("Uploading...");
+                    if($s3->uploadFile($bucket, $remote_name, $gzname, true, $headers)) {
                         echo "http://$bucket.s3.amazonaws.com/$remote_name\n";
-                    else
+                        logMessage("File '$filename' ($gzname) uploaded to 'http://$bucket.s3.amazonaws.com/$remote_name'");
+                    } else {
                         echo "Error: Unable to upload '$filename' (gzip version)\n";
+                        logMessage("Error: Unable to upload '$filename' (gzip version)");
+                    }
                 }
             }
         }
