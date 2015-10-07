@@ -21,7 +21,7 @@ INSTALL
 
 Requires PHP5 and php_curl extension.
 
- * Place s3up in a convienient location and make executable.
+ * Place s3up in a convenient location and make executable.
 
 You're done!
 
